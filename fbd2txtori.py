@@ -129,8 +129,8 @@ def compute_str(line, dir_name):
         return ur"\begin{array}{%s}\hline %s \end{array}" % (
             u'c'.join(['|' for i in range(column_cnt + 1)]), table_contents)
 
-    line = re.sub(ur'〖', '[', line)
-    line = re.sub(ur'〗', ']', line)
+    line = re.sub(ur'\u3016', '[', line)
+    line = re.sub(ur'\u3017', ']', line)
     line = re.sub(ur'\ue011', '-', line)
     line = re.sub(ur'\[XC\<(.*?)\>.*?\]', ur'[[img]]\1[[/img]]', line)
     line = re.sub(ur'\[TP\<(.*?)\>.*?\]', ur'[[img]]\1[[/img]]', line)
@@ -157,8 +157,6 @@ def compute_str(line, dir_name):
     line = re.sub(ur'＝', '=', line)
     line = re.sub(ur'）', ')', line)
     line = re.sub(ur'（', '(', line)
-    line = re.sub(ur'÷', r'\\div ', line)
-    line = re.sub(ur'×', r'\\times ', line)
     line = re.sub(ur'\[MQ.*?\](.*?)\[MQ\)?\]', ur'[[cd]]\1[[/cd]]', line) # chapter
     line = re.sub(ur'\n\[ML\]\[HS(\d)\](.*?)\[HT\]', ur'[[sd-\1]]\2[[/sd]]', line) # section
     line = re.sub(ur'\[HTH\](.*?)([^］]s*)\[HT\]', ur'[[kp]](\1)[[/kp]]', line) # knowledge point
@@ -166,83 +164,96 @@ def compute_str(line, dir_name):
 
 
 def compute_math(line):
-    line = re.sub(ur'\n(?=\n)', '', line)
-    line = re.sub(ur'\r', '', line)
-    line = re.sub(ur'', '\'', line)
-    line = re.sub(ur'', '\n', line)
-    line = re.sub(ur'', '\n', line)
-    line = re.sub(ur'〖', '[', line)
-    line = re.sub(ur'〗', ']', line)
-    line = re.sub(ur'）', ')', line)
-    line = re.sub(ur'（', '(', line)
-    pattern_list = [  # (ur'\ue008','{'),
-        (ur'\ue055', r'\\exists '),
-        (ur'\u222b', r'\\int '),
-        (ur'\u2229', r'\\cap '),
-        (ur'\u2264', r'\\leq '),
-        (ur'\u22a5', r'\\perp '),
-        (ur'\u0391', 'A'),
-        (ur'\u039b', r'\\Lambda '),
-        (ur'\u03a0', r'\\Pi '),
-        (ur'\u03a6', r'\\Phi '),
-        (ur'\u03b1', r'\\alpha '),
-        (ur'\u03b6', r'\\zeta '),
-        (ur'\u03bb', r'\\lambda '),
-        (ur'\u03c0', r'\\pi '),
-        (ur'\u03c6', r'\\varphi '),
-        (ur'\u2211', r'\\sum '),
-        (ur'\u222a', r'\\cup '),
-        (ur'\u2265', r'\\geq '),
-        (ur'\u0088', r'\\in '),
-        (ur'\u0392', 'B'),
-        (ur'\u03b2', r'\\beta '),
-        (ur'\u03b7', r'\\eta '),
-        (ur'\u03bc', r'\\mu '),
-        (ur'\u03c1', r'\\rho '),
-        (ur'\u03c7', r'\\chi '),
-        (ur'(?<![\ue00b\ue00c])\ue008(.*?)\ue009', r'\1'),
-        (ur'\ue008(.*?)\ue009', r'{\1}'),
-        (ur'(\ue00b)+', '^'),
-        (ur'\u00b1', r'\\pm '),
-        (ur'\u25b3', r'\\triangle '),
-        (ur'\u2225', r'\\parallel '),
-        (ur'\u0393', r'\\Gamma '),
-        (ur'\u0398', r'\\Theta '),
-        (ur'\u03a2', r'\\sigma '),
-        (ur'\u03a3', r'\\sigma '),
-        (ur'\u03a8', r'\\Psi '),
-        (ur'\u03b3', r'\\gamma '),
-        (ur'\u03b8', r'\\theta '),
-        (ur'\u03bd', r'\\nu '),
-        (ur'\u03c2', r'\\sigma '),
-        (ur'\u03c3', r'\\sigma '),
-        (ur'\u03c8', r'\\psi '),
-        (ur'(\ue00c)+', '_'),
-        (ur'\u00b0', r'^\\circ '),
-        (ur'\ue07e', r'\\varnothing '),
-        (ur'\u0394', r'\\Delta '),
-        (ur'\u039e', r'\\Xi '),
-        (ur'\u03a9', r'\\Omega '),
-        (ur'\u03b4', r'\\delta '),
-        (ur'\u03b9', r'\\iota '),
-        (ur'\u03be', r'\\xi '),
 
-        (ur'\u03c4', r'\\tau '),
-        (ur'\u03c9', r'\\omega '),
-        (ur'\u221e', r'\\infty '),
-        (ur'\u2220', r'\\angle '),
-        (ur'\u03a5', r'\\Upsilon '),
-        (ur'\u03ba', r'\\epsilon '),
-        (ur'\u03ba', r'\\kappa '),
-        (ur'\u03c5', r'\\upsilon ')
-    ]
+    def decode_founder(line):
 
-    for src_str, des_str in pattern_list:
-        line = re.sub(src_str, des_str, line)
+        founder_list = [
+            (ur'\n(?=\n)', ''),
+            (ur'\r', ''),
+            (ur'', '\''),
+            (ur'', '\n'),
+            (ur'', '\n'),
+            (ur'〖', '['),
+            (ur'〗', ']'),
+            (ur'）', ')'),
+            (ur'（', '('),
+            (ur'\[WTHZ\]', r''),
+            (ur'\[WTHX\]', r''),
+            (ur'\[WTBX\]', r''),
+        ]
+        for src, des in founder_list:
+            line = re.sub(src, des, line)
+        return line
 
-    line = re.sub(ur'\[WTHZ\]', r'', line)
-    line = re.sub(ur'\[WTHX\]', r'', line)
-    line = re.sub(ur'\[WTBX\]', r'', line) # font setting 
+    def unicode2latex(line):
+        unicode2latex_list = [  # (ur'\ue008','{'),
+            (ur'÷', r'\\div '),
+            (ur'×', r'\\times '),
+            (ur'\ue055', r'\\exists '),
+            (ur'\u222b', r'\\int '),
+            (ur'\u2229', r'\\cap '),
+            (ur'\u2264', r'\\leq '),
+            (ur'\u22a5', r'\\perp '),
+            (ur'\u0391', 'A'),
+            (ur'\u039b', r'\\Lambda '),
+            (ur'\u03a0', r'\\Pi '),
+            (ur'\u03a6', r'\\Phi '),
+            (ur'\u03b1', r'\\alpha '),
+            (ur'\u03b6', r'\\zeta '),
+            (ur'\u03bb', r'\\lambda '),
+            (ur'\u03c0', r'\\pi '),
+            (ur'\u03c6', r'\\varphi '),
+            (ur'\u2211', r'\\sum '),
+            (ur'\u222a', r'\\cup '),
+            (ur'\u2265', r'\\geq '),
+            (ur'\u0088', r'\\in '),
+            (ur'\u0392', 'B'),
+            (ur'\u03b2', r'\\beta '),
+            (ur'\u03b7', r'\\eta '),
+            (ur'\u03bc', r'\\mu '),
+            (ur'\u03c1', r'\\rho '),
+            (ur'\u03c7', r'\\chi '),
+            (ur'(?<![\ue00b\ue00c])\ue008(.*?)\ue009', r'\1'),
+            (ur'\ue008(.*?)\ue009', r'{\1}'),
+            (ur'(\ue00b)+', '^'),
+            (ur'\u00b1', r'\\pm '),
+            (ur'\u25b3', r'\\triangle '),
+            (ur'\u2225', r'\\parallel '),
+            (ur'\u0393', r'\\Gamma '),
+            (ur'\u0398', r'\\Theta '),
+            (ur'\u03a2', r'\\sigma '),
+            (ur'\u03a3', r'\\sigma '),
+            (ur'\u03a8', r'\\Psi '),
+            (ur'\u03b3', r'\\gamma '),
+            (ur'\u03b8', r'\\theta '),
+            (ur'\u03bd', r'\\nu '),
+            (ur'\u03c2', r'\\sigma '),
+            (ur'\u03c3', r'\\sigma '),
+            (ur'\u03c8', r'\\psi '),
+            (ur'(\ue00c)+', '_'),
+            (ur'\u00b0', r'^\\circ '),
+            (ur'\ue07e', r'\\varnothing '),
+            (ur'\u0394', r'\\Delta '),
+            (ur'\u039e', r'\\Xi '),
+            (ur'\u03a9', r'\\Omega '),
+            (ur'\u03b4', r'\\delta '),
+            (ur'\u03b9', r'\\iota '),
+            (ur'\u03be', r'\\xi '),
+
+            (ur'\u03c4', r'\\tau '),
+            (ur'\u03c9', r'\\omega '),
+            (ur'\u221e', r'\\infty '),
+            (ur'\u2220', r'\\angle '),
+            (ur'\u03a5', r'\\Upsilon '),
+            (ur'\u03ba', r'\\epsilon '),
+            (ur'\u03ba', r'\\kappa '),
+            (ur'\u03c5', r'\\upsilon ')
+        ]
+        for src_str, des_str in unicode2latex_list:
+            line = re.sub(src_str, des_str, line)
+        return line
+    line = decode_founder(line)
+    line = unicode2latex(line)
     line = re.sub(ur'\[MQ.*?\](.*?)\[MQ\)?\]', ur'[[cd]]\1[[/cd]]', line)
     line = re.sub(ur'\n\[ML\]\[HS(\d)\](.*?)\[HT\]', ur'[[sd-\1]]\2[[/sd]]', line)
     line = re.sub(ur'\[HTH\](.*?)([^］]s*)\[HT\]', ur'[[kp]](\1)[[/kp]]', line)
