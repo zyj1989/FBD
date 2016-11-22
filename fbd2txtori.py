@@ -11,7 +11,7 @@ from tornado.options import options
 import logging
 import uuid
 import shutil
-
+from fbdstr import fbd_qcode_map
 
 def get_picture(match, dir_name):
     file_name = match.group(2)
@@ -135,15 +135,7 @@ def compute_str(line, dir_name):
     line = re.sub(ur'\[XC\<(.*?)\>.*?\]', ur'[[img]]\1[[/img]]', line)
     line = re.sub(ur'\[TP\<(.*?)\>.*?\]', ur'[[img]]\1[[/img]]', line)
     line = re.sub(ur'\[PS\<(.*?)\>.*?\]', ur'[[img]]\1[[/img]]', line)
-    line = re.sub(
-        ur'\[XC([^\[\]]+\.(?:tif|jpg|bmp|TIF|JPG|BMP|eps|EPS|AI|ai))[^\[\]]*?\]',
-        ur'[[img]]\1[[/img]]', line)
-    line = re.sub(
-        ur'\[TP([^\[\]]+\.(?:tif|jpg|bmp|TIF|JPG|BMP|eps|EPS|AI|ai))[^\[\]]*?\]',
-        ur'[[img]]\1[[/img]]', line)
-    line = re.sub(
-        ur'\[PS([^\[\]]+\.(?:tif|jpg|bmp|TIF|JPG|BMP|eps|EPS|AI|ai))[^\[\]]*?\]',
-        ur'[[img]]\1[[/img]]', line)
+
     line = re.sub(ur'\[CD#\d\]', ur'[[nn]]', line)
     line = re.sub(ur'\[ZZ[\(（]Z\](.*?)\[ZZ[\)）]\]', ur'[[un]]\1[[/un]]', line)
     line = re.sub(ur'\[BG.*?\]([\s\S]+?)\[BG.*?\]', decode_table, line)
@@ -157,16 +149,19 @@ def compute_str(line, dir_name):
     line = re.sub(ur'＝', '=', line)
     line = re.sub(ur'）', ')', line)
     line = re.sub(ur'（', '(', line)
-    line = re.sub(ur'\[MQ.*?\](.*?)\[MQ\)?\]', ur'[[cd]]\1[[/cd]]', line) # chapter
-    line = re.sub(ur'\n\[ML\]\[HS(\d)\](.*?)\[HT\]', ur'[[sd-\1]]\2[[/sd]]', line) # section
-    line = re.sub(ur'\[HTH\](.*?)([^］]s*)\[HT\]', ur'[[kp]](\1)[[/kp]]', line) # knowledge point
     return line.encode('gb18030').decode('gbk', 'ignore')
 
 
 def compute_math(line):
 
-    def decode_founder(line):
+    def fbd_qcode(line):
+        for _dict in fbd_qcode_map:
+            sub = _dict.get('sub')
+            for ori in _dict.get('ori'):
+                line = re.sub(ori, sub, line)
+        return line
 
+    def decode_founder(line):
         founder_list = [
             (ur'\n(?=\n)', ''),
             (ur'\r', ''),
@@ -239,7 +234,6 @@ def compute_math(line):
             (ur'\u03b4', r'\\delta '),
             (ur'\u03b9', r'\\iota '),
             (ur'\u03be', r'\\xi '),
-
             (ur'\u03c4', r'\\tau '),
             (ur'\u03c9', r'\\omega '),
             (ur'\u221e', r'\\infty '),
@@ -254,11 +248,8 @@ def compute_math(line):
         return line
     line = decode_founder(line)
     line = unicode2latex(line)
-    line = re.sub(ur'\[MQ.*?\](.*?)\[MQ\)?\]', ur'[[cd]]\1[[/cd]]', line)
-    line = re.sub(ur'\n\[ML\]\[HS(\d)\](.*?)\[HT\]', ur'[[sd-\1]]\2[[/sd]]', line)
-    line = re.sub(ur'\[HTH\](.*?)([^］]s*)\[HT\]', ur'[[kp]](\1)[[/kp]]', line)
-    line = re.sub(ur'(?<!=)(\d+)\[BFQ\]\.\[BF\](?!\[JB\])', ur'[[qnum]]\1[[/qnum]].', line)
-    line = re.sub(ur'\ue00a([A-Ga-g])\ue00a\[BFQ\]\.\[BF\]', ur'[[op]]\1[[/op]].', line)
+    line = fbd_qcode(line)
+    # line = founder2qcode(line)
     line = re.sub(ur'\ue00a(.*?)\ue00a', r'{\\rm{\1}}}', line)
     line = re.sub(ur'\ue008(.*?)\ue009\[TX\u2192\]', r'{\\overrightarrow {\1}}', line)
     line = re.sub(ur'\[AK(.*?)\-\]', r'\\overline \1', line)
