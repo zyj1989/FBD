@@ -7,28 +7,28 @@ import itertools
 from operator import itemgetter
 from collections import defaultdict
 from functools import partial
-from tornado.options import options
 import logging
 import uuid
 import shutil
 from util import file_manager
-from fbdstr import fbd_qcode_map
+from tornado.options import options
 
-def get_picture(match, dir_name):
+
+def get_picture(match, dirname, bucket, db):
     file_name = match.group(2)
 
     name, ext = os.path.splitext(file_name)
     name_list = [name, name.lower(), name.upper()]
     ext_list = [ext, ext.lower(), ext.upper()]
 
-    logging.info(u'get_picture:{}'.format(os.path.join(dir_name, file_name)))
+    logging.info(u'get_picture:{}'.format(os.path.join(dirname, file_name)))
     for i, j in itertools.product(name_list, ext_list):
-        real_name = os.path.join(dir_name, i + j)
+        real_name = os.path.join(dirname, i+j)
         name = i
         if os.path.exists(real_name):
             break
     else:
-        logging.info(u'没有找到对应的文件:{}'.format(os.path.join(dir_name, file_name)))
+        logging.info(u'没有找到对应的文件:{}'.format(os.path.join(dirname, file_name)))
         return ''
 
     tmpdir = u"tmp_dir/"+str(uuid.uuid1())+"/"
@@ -46,7 +46,7 @@ def get_picture(match, dir_name):
         if not os.path.exists(new_tmp_name):
             raise Exception('file not exist: ' + new_tmp_name)
         data = open(tmpdir+"tmp_src.jpg", 'rb').read()
-        saved_name = file_manager.save(options.img_store_path, data, 'jpg')
+        saved_name = file_manager.save(options.img_store_path, bucket, db, data, 'jpg')
         img_str += u'[[img]]{}[[/img]]'.format(saved_name)
     except Exception as e:
         logging.info(str(e))
@@ -59,7 +59,7 @@ def get_picture(match, dir_name):
     return img_str
 
 
-def compute_str(line, dir_name):
+def compute_str(bucket, db, line, dir_name):
     def copy_img(line):
         new_line = u''
         last_img = u''
@@ -130,18 +130,26 @@ def compute_str(line, dir_name):
         return ur"\begin{array}{%s}\hline %s \end{array}" % (
             u'c'.join(['|' for i in range(column_cnt + 1)]), table_contents)
 
-    line = re.sub(ur'\u3016', '[', line)
-    line = re.sub(ur'\u3017', ']', line)
+    line = re.sub(ur'〖', '[', line)
+    line = re.sub(ur'〗', ']', line)
     line = re.sub(ur'\ue011', '-', line)
     line = re.sub(ur'\[XC\<(.*?)\>.*?\]', ur'[[img]]\1[[/img]]', line)
     line = re.sub(ur'\[TP\<(.*?)\>.*?\]', ur'[[img]]\1[[/img]]', line)
     line = re.sub(ur'\[PS\<(.*?)\>.*?\]', ur'[[img]]\1[[/img]]', line)
-
+    line = re.sub(
+        ur'\[XC([^\[\]]+\.(?:tif|jpg|bmp|TIF|JPG|BMP|eps|EPS|AI|ai))[^\[\]]*?\]',
+        ur'[[img]]\1[[/img]]', line)
+    line = re.sub(
+        ur'\[TP([^\[\]]+\.(?:tif|jpg|bmp|TIF|JPG|BMP|eps|EPS|AI|ai))[^\[\]]*?\]',
+        ur'[[img]]\1[[/img]]', line)
+    line = re.sub(
+        ur'\[PS([^\[\]]+\.(?:tif|jpg|bmp|TIF|JPG|BMP|eps|EPS|AI|ai))[^\[\]]*?\]',
+        ur'[[img]]\1[[/img]]', line)
     line = re.sub(ur'\[CD#\d\]', ur'[[nn]]', line)
     line = re.sub(ur'\[ZZ[\(（]Z\](.*?)\[ZZ[\)）]\]', ur'[[un]]\1[[/un]]', line)
     line = re.sub(ur'\[BG.*?\]([\s\S]+?)\[BG.*?\]', decode_table, line)
     line = re.sub(ur'(\[\[img\]\])(.*?)(\[\[/img\]\])',
-                  partial(get_picture, dir_name=dir_name), line)
+                  partial(get_picture, dirname=dir_name, bucket=bucket, db=db), line)
 
     line = copy_img(line)
     line = copy_table(line)
@@ -150,108 +158,93 @@ def compute_str(line, dir_name):
     line = re.sub(ur'＝', '=', line)
     line = re.sub(ur'）', ')', line)
     line = re.sub(ur'（', '(', line)
+    line = re.sub(ur'÷', r'\\div ', line)
+    line = re.sub(ur'×', r'\\times ', line)
+    line = re.sub(ur'\[MQ.*?\](.*?)\[MQ\)?\]', ur'[[cd]]\1[[/cd]]', line)
+    line = re.sub(ur'\n\[ML\]\[HS(\d)\](.*?)\[HT\]', ur'[[sd-\1]]\2[[/sd]]', line)
+    line = re.sub(ur'\[HTH\](.*?)([^］]s*)\[HT\]', ur'[[kp]](\1)[[/kp]]', line)
     return line.encode('gb18030').decode('gbk', 'ignore')
 
 
 def compute_math(line):
+    line = re.sub(ur'\n(?=\n)', '', line)
+    line = re.sub(ur'\r', '', line)
+    line = re.sub(ur'', '\'', line)
+    line = re.sub(ur'', '\n', line)
+    line = re.sub(ur'', '\n', line)
+    line = re.sub(ur'〖', '[', line)
+    line = re.sub(ur'〗', ']', line)
+    line = re.sub(ur'）', ')', line)
+    line = re.sub(ur'（', '(', line)
+    pattern_list = [  # (ur'\ue008','{'),
+        (ur'\ue055', r'\\exists '),
+        (ur'\u222b', r'\\int '),
+        (ur'\u2229', r'\\cap '),
+        (ur'\u2264', r'\\leq '),
+        (ur'\u22a5', r'\\perp '),
+        (ur'\u0391', 'A'),
+        (ur'\u039b', r'\\Lambda '),
+        (ur'\u03a0', r'\\Pi '),
+        (ur'\u03a6', r'\\Phi '),
+        (ur'\u03b1', r'\\alpha '),
+        (ur'\u03b6', r'\\zeta '),
+        (ur'\u03bb', r'\\lambda '),
+        (ur'\u03c0', r'\\pi '),
+        (ur'\u03c6', r'\\varphi '),
+        (ur'\u2211', r'\\sum '),
+        (ur'\u222a', r'\\cup '),
+        (ur'\u2265', r'\\geq '),
+        (ur'\u0088', r'\\in '),
+        (ur'\u0392', 'B'),
+        (ur'\u03b2', r'\\beta '),
+        (ur'\u03b7', r'\\eta '),
+        (ur'\u03bc', r'\\mu '),
+        (ur'\u03c1', r'\\rho '),
+        (ur'\u03c7', r'\\chi '),
+        (ur'(?<![\ue00b\ue00c])\ue008(.*?)\ue009', r'\1'),
+        (ur'\ue008(.*?)\ue009', r'{\1}'),
+        (ur'(\ue00b)+', '^'),
+        (ur'\u00b1', r'\\pm '),
+        (ur'\u25b3', r'\\triangle '),
+        (ur'\u2225', r'\\parallel '),
+        (ur'\u0393', r'\\Gamma '),
+        (ur'\u0398', r'\\Theta '),
+        (ur'\u03a2', r'\\sigma '),
+        (ur'\u03a3', r'\\sigma '),
+        (ur'\u03a8', r'\\Psi '),
+        (ur'\u03b3', r'\\gamma '),
+        (ur'\u03b8', r'\\theta '),
+        (ur'\u03bd', r'\\nu '),
+        (ur'\u03c2', r'\\sigma '),
+        (ur'\u03c3', r'\\sigma '),
+        (ur'\u03c8', r'\\psi '),
+        (ur'(\ue00c)+', '_'),
+        (ur'\u00b0', r'^\\circ '),
+        (ur'\ue07e', r'\\varnothing '),
+        (ur'\u0394', r'\\Delta '),
+        (ur'\u039e', r'\\Xi '),
+        (ur'\u03a9', r'\\Omega '),
+        (ur'\u03b4', r'\\delta '),
+        (ur'\u03b9', r'\\iota '),
+        (ur'\u03be', r'\\xi '),
 
-    def fbd_qcode(line):
-        for _dict in fbd_qcode_map:
-            sub = _dict.get('sub')
-            for ori in _dict.get('ori'):
-                line = re.sub(ori, sub, line)
-        return line
+        (ur'\u03c4', r'\\tau '),
+        (ur'\u03c9', r'\\omega '),
+        (ur'\u221e', r'\\infty '),
+        (ur'\u2220', r'\\angle '),
+        (ur'\u03a5', r'\\Upsilon '),
+        (ur'\u03ba', r'\\epsilon '),
+        (ur'\u03ba', r'\\kappa '),
+        (ur'\u03c5', r'\\upsilon ')
+    ]
 
-    def decode_founder(line):
-        founder_list = [
-            (ur'\n(?=\n)', ''),
-            (ur'\r', ''),
-            (ur'', '\''),
-            (ur'', '\n'),
-            (ur'', '\n'),
-            (ur'〖', '['),
-            (ur'〗', ']'),
-            (ur'）', ')'),
-            (ur'（', '('),
-            (ur'\[WTHZ\]', r''),
-            (ur'\[WTHX\]', r''),
-            (ur'\[WTBX\]', r''),
-        ]
-        for src, des in founder_list:
-            line = re.sub(src, des, line)
-        return line
+    for src_str, des_str in pattern_list:
+        line = re.sub(src_str, des_str, line)
 
-    def unicode2latex(line):
-        unicode2latex_list = [  # (ur'\ue008','{'),
-            (ur'÷', r'\\div '),
-            (ur'×', r'\\times '),
-            (ur'\ue055', r'\\exists '),
-            (ur'\u222b', r'\\int '),
-            (ur'\u2229', r'\\cap '),
-            (ur'\u2264', r'\\leq '),
-            (ur'\u22a5', r'\\perp '),
-            (ur'\u0391', 'A'),
-            (ur'\u039b', r'\\Lambda '),
-            (ur'\u03a0', r'\\Pi '),
-            (ur'\u03a6', r'\\Phi '),
-            (ur'\u03b1', r'\\alpha '),
-            (ur'\u03b6', r'\\zeta '),
-            (ur'\u03bb', r'\\lambda '),
-            (ur'\u03c0', r'\\pi '),
-            (ur'\u03c6', r'\\varphi '),
-            (ur'\u2211', r'\\sum '),
-            (ur'\u222a', r'\\cup '),
-            (ur'\u2265', r'\\geq '),
-            (ur'\u0088', r'\\in '),
-            (ur'\u0392', 'B'),
-            (ur'\u03b2', r'\\beta '),
-            (ur'\u03b7', r'\\eta '),
-            (ur'\u03bc', r'\\mu '),
-            (ur'\u03c1', r'\\rho '),
-            (ur'\u03c7', r'\\chi '),
-            (ur'(?<![\ue00b\ue00c])\ue008(.*?)\ue009', r'\1'),
-            (ur'\ue008(.*?)\ue009', r'{\1}'),
-            (ur'(\ue00b)+', '^'),
-            (ur'\u00b1', r'\\pm '),
-            (ur'\u25b3', r'\\triangle '),
-            (ur'\u2225', r'\\parallel '),
-            (ur'\u0393', r'\\Gamma '),
-            (ur'\u0398', r'\\Theta '),
-            (ur'\u03a2', r'\\sigma '),
-            (ur'\u03a3', r'\\sigma '),
-            (ur'\u03a8', r'\\Psi '),
-            (ur'\u03b3', r'\\gamma '),
-            (ur'\u03b8', r'\\theta '),
-            (ur'\u03bd', r'\\nu '),
-            (ur'\u03c2', r'\\sigma '),
-            (ur'\u03c3', r'\\sigma '),
-            (ur'\u03c8', r'\\psi '),
-            (ur'(\ue00c)+', '_'),
-            (ur'\u00b0', r'^\\circ '),
-            (ur'\ue07e', r'\\varnothing '),
-            (ur'\u0394', r'\\Delta '),
-            (ur'\u039e', r'\\Xi '),
-            (ur'\u03a9', r'\\Omega '),
-            (ur'\u03b4', r'\\delta '),
-            (ur'\u03b9', r'\\iota '),
-            (ur'\u03be', r'\\xi '),
-            (ur'\u03c4', r'\\tau '),
-            (ur'\u03c9', r'\\omega '),
-            (ur'\u221e', r'\\infty '),
-            (ur'\u2220', r'\\angle '),
-            (ur'\u03a5', r'\\Upsilon '),
-            (ur'\u03ba', r'\\epsilon '),
-            (ur'\u03ba', r'\\kappa '),
-            (ur'\u03c5', r'\\upsilon ')
-        ]
-        for src_str, des_str in unicode2latex_list:
-            line = re.sub(src_str, des_str, line)
-        return line
-    line = decode_founder(line)
-    line = unicode2latex(line)
-    line = fbd_qcode(line)
-    # line = founder2qcode(line)
-    line = re.sub(ur'\ue00a(.*?)\ue00a', r'{\\rm{\1}}}', line)
+    line = re.sub(ur'\[WTHZ\]', r'', line)
+    line = re.sub(ur'\[WTHX\]', r'', line)
+    line = re.sub(ur'\[WTBX\]', r'', line)
+    line = re.sub(ur'\ue00a(.*?)\ue00a', r'\1', line)
     line = re.sub(ur'\ue008(.*?)\ue009\[TX\u2192\]', r'{\\overrightarrow {\1}}', line)
     line = re.sub(ur'\[AK(.*?)\-\]', r'\\overline \1', line)
     line = re.sub(ur'\[KF\(S\](\d+)\[\](.*?)\[KF\)\]', r'\\sqrt[\1]{\2}', line)
@@ -275,10 +268,15 @@ def compute_math(line):
 
 
 def split_line(lines):
+
     def normalize_line(line):
         line = re.sub(ur'\[PN.*?\[PN\)?\]', u'', line)
         line = re.sub(ur'\[BW.*?\[BW\)?\]', u'', line)
-
+        line = re.sub(ur'\[MQ.*?\](.*?)\[MQ\)?\]', ur'[[cd]]\1[[/cd]]', line)
+        line = re.sub(ur'\n\[ML\]\[HS(\d)\](.*?)\[HT\]', ur'[[sd-\1]]\2[[/sd]]', line)
+        line = re.sub(ur'\[HTH\](.*?)([^］]s*)\[HT\]', ur'[[kp]](\1)[[/kp]]', line)
+        line = re.sub(ur'(?<!=)(\d+)\[BFQ\]\.\[BF\](?!\[JB\])', ur'[[qnum]]\1[[/qnum]].', line)
+        line = re.sub(ur'([A-Ga-g])\[BFQ\]\.\[BF\]', ur'[[op]]\1[[/op]].', line)
         line = re.sub(ur'\[JY\]\{?\(〓+\)\}?', ur'[[nn]]', line)
         line = re.sub(ur'(?<!\[)\[[^\"\'\[\]]{2,}\](?!\])', ' ', line)
         line = re.sub(ur'(?<!\[)\[[a-zA-Z]\](?!\])', ' ', line)
@@ -291,16 +289,20 @@ def split_line(lines):
         return line
     split_patten = re.compile(ur'\[FL\)')
     lines = split_patten.split(lines)
-    return [normalize_line(line) for line in lines]
+    return [normalize_line(line) for line in lines[:-1]]
 
 
-def search_and_extract(dir_name):
+def search_and_extract(bucket, db, dirname):
     def _get_files(path):
         assert os.path.isdir(path)
         return [os.path.join(path, file_name) for file_name in os.listdir(path)]
 
-    assert os.path.isdir(dir_name)
-    files = [os.path.join(dir_name, file_name) for file_name in os.listdir(dir_name)]
+    if not os.path.exists(dirname):
+        raise Exception(u'上传文件目录不存在')
+    if not os.path.isdir(dirname):
+        raise Exception(u'非文件夹结构')
+
+    files = [os.path.join(dirname, file_name) for file_name in os.listdir(dirname)]
     return_name = defaultdict(lambda: {'question': '', 'answer': '', 'index': 0})
     return_data = defaultdict(lambda: {'question': '', 'answer': '', 'index': 0})
 
@@ -309,7 +311,7 @@ def search_and_extract(dir_name):
         if os.path.isdir(file_name):
             files += _get_files(file_name)
         elif file_name.endswith('.fbd'):
-            dir_name, basename = os.path.split(file_name)
+            dirname, basename = os.path.split(file_name)
             name, _ = os.path.splitext(basename)
             if name not in [u'教师详答', u'正文']:
                 continue
@@ -317,28 +319,14 @@ def search_and_extract(dir_name):
             line = open(file_name).read()
             line = line.decode('gb18030', 'ignore')
             line = compute_math(line)
-            line = compute_str(line, dir_name)
+            line = compute_str(bucket, db, line, dirname)
             lines = split_line(line)
             for index, line in enumerate(lines):
                 file_name = file_manager.save(
-                    options.doc_store_path, line.encode('utf-8'), 'txt')
+                    options.doc_store_path, bucket, db, line.encode('utf-8'), 'txt')
                 return_name[index][type_id] = file_name
                 return_name[index]['index'] = index
                 return_data[index][type_id] = line
                 return_data[index]['index'] = index
     return sorted(return_name.values(), key=itemgetter('index')),\
         sorted(return_data.values(), key=itemgetter('index'))
-
-dir_name = ''
-file_name = u'正文.fbd'
-f = open(file_name)
-line = f.read()
-line = line.decode('gb18030', 'ignore')
-line = compute_math(line)
-line = compute_str(line, dir_name)
-lines = split_line(line)
-for line in lines:
-    print line
-
-
-
